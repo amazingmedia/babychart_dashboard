@@ -18,11 +18,11 @@ export default function App() {
 
   // Dashboard States
   const [patterns, setPatterns] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]); // Categories အတွက် State
+  const [categories, setCategories] = useState<any[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   
   // Form States
-  const [categoryId, setCategoryId] = useState(''); // Category ID State သစ်
+  const [categoryId, setCategoryId] = useState('');
   const [textValue, setTextValue] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [folderPath, setFolderPath] = useState('');
@@ -41,10 +41,9 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Login ဝင်ထားမှ Data ယူရန်
   useEffect(() => {
     if (session) {
-      fetchCategories(); // Category တွေကို အရင်ဆွဲယူပါမယ်
+      fetchCategories();
       fetchPatterns();
     }
   }, [session]);
@@ -61,7 +60,6 @@ export default function App() {
     await supabase.auth.signOut();
   };
 
-  // Category များကို လှမ်းယူခြင်း
   const fetchCategories = async () => {
     const { data, error } = await supabase.from('pattern_categories').select('*');
     if (error) console.error('Error fetching categories:', error);
@@ -83,7 +81,6 @@ export default function App() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // category_id ကိုပါ ထည့်ပို့ပေးပါမည်
     const payload = { 
       category_id: categoryId, 
       text_value: textValue, 
@@ -94,14 +91,15 @@ export default function App() {
 
     if (editingId) {
       const { error } = await supabase.from('patterns').update(payload).eq('id', editingId);
-      if (error) alert('Error: ' + error.message);
+      if (error) alert('Error updating: ' + error.message);
       else alert('Updated successfully!');
     } else {
       const { error } = await supabase.from('patterns').insert([payload]);
-      if (error) alert('Error: ' + error.message);
+      if (error) alert('Error saving: ' + error.message);
       else alert('Added successfully!');
     }
-    resetForm();
+    
+    // Error မတက်မှသာ Form ကို Reset ချပါမယ်
     fetchPatterns();
   };
 
@@ -114,7 +112,7 @@ export default function App() {
 
   const handleEdit = (pattern: any) => {
     setEditingId(pattern.id);
-    setCategoryId(pattern.category_id || ''); // Edit လုပ်ရင် category ပြန်ရွေးပေးရန်
+    setCategoryId(pattern.category_id || '');
     setTextValue(pattern.text_value || '');
     setImageUrl(pattern.image_url || '');
     setFolderPath(pattern.folder_path || '');
@@ -130,6 +128,9 @@ export default function App() {
     setSortOrder(0); 
     setEditingId(null);
   };
+
+  // ရှိပြီးသား Folder Path များကို သီးသန့်ထုတ်ယူခြင်း (Duplicate များကို ဖယ်ရှားရန် Set ကိုသုံးထားပါသည်)
+  const existingFolderPaths = Array.from(new Set(patterns.map(p => p.folder_path).filter(Boolean)));
 
   if (!session) {
     return (
@@ -166,7 +167,6 @@ export default function App() {
           <h2 className="text-xl font-semibold mb-4 text-gray-700">{editingId ? 'Edit Pattern' : 'Add New Pattern'}</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            {/* Category Dropdown အသစ် */}
             <select 
               value={categoryId} 
               onChange={(e) => setCategoryId(e.target.value)} 
@@ -176,14 +176,30 @@ export default function App() {
               <option value="" disabled>Select Category</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name || c.category_name || c.title || c.id} {/* Category နာမည်ကို ပြပေးရန် */}
+                  {c.name || c.category_name || c.title || c.id}
                 </option>
               ))}
             </select>
 
             <input type="text" placeholder="Text Value" value={textValue} onChange={(e) => setTextValue(e.target.value)} required className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none text-black" />
             <input type="text" placeholder="Image URL" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none text-black" />
-            <input type="text" placeholder="Folder Path" value={folderPath} onChange={(e) => setFolderPath(e.target.value)} className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none text-black" />
+            
+            {/* Folder Path အတွက် Autocomplete Input */}
+            <input 
+              type="text" 
+              placeholder="Folder Path (e.g. sl_2)" 
+              value={folderPath} 
+              onChange={(e) => setFolderPath(e.target.value)} 
+              list="existing-folders" 
+              className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none text-black" 
+            />
+            {/* Datalist က ရှိပြီးသား Data တွေကို ပြပေးပါမယ် */}
+            <datalist id="existing-folders">
+              {existingFolderPaths.map((path, idx) => (
+                <option key={idx} value={path as string} />
+              ))}
+            </datalist>
+
             <input type="number" placeholder="Sort Order" value={sortOrder} onChange={(e) => setSortOrder(Number(e.target.value))} className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none text-black" />
           </div>
           
@@ -191,9 +207,9 @@ export default function App() {
             <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded transition">
               {editingId ? 'Update Record' : 'Save Record'}
             </button>
-            {editingId && (
-              <button type="button" onClick={resetForm} className="bg-gray-100 text-gray-700 font-medium px-5 py-2 rounded border transition">Cancel</button>
-            )}
+            <button type="button" onClick={resetForm} className="bg-gray-100 text-gray-700 font-medium px-5 py-2 rounded border transition">
+              {editingId ? 'Cancel Edit' : 'Clear Form'}
+            </button>
           </div>
         </form>
 
