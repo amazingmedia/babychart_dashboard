@@ -18,14 +18,17 @@ export default function App() {
 
   // Dashboard States
   const [patterns, setPatterns] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]); // Categories အတွက် State
   const [dataLoading, setDataLoading] = useState(true);
+  
+  // Form States
+  const [categoryId, setCategoryId] = useState(''); // Category ID State သစ်
   const [textValue, setTextValue] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [folderPath, setFolderPath] = useState('');
   const [sortOrder, setSortOrder] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Authentication စစ်ဆေးခြင်း
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -41,19 +44,15 @@ export default function App() {
   // Login ဝင်ထားမှ Data ယူရန်
   useEffect(() => {
     if (session) {
+      fetchCategories(); // Category တွေကို အရင်ဆွဲယူပါမယ်
       fetchPatterns();
     }
   }, [session]);
 
-  // --- Login & Logout Functions ---
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) alert('Login Failed: ' + error.message);
     setAuthLoading(false);
   };
@@ -62,7 +61,13 @@ export default function App() {
     await supabase.auth.signOut();
   };
 
-  // --- Dashboard Functions ---
+  // Category များကို လှမ်းယူခြင်း
+  const fetchCategories = async () => {
+    const { data, error } = await supabase.from('pattern_categories').select('*');
+    if (error) console.error('Error fetching categories:', error);
+    else setCategories(data || []);
+  };
+
   const fetchPatterns = async () => {
     setDataLoading(true);
     const { data, error } = await supabase
@@ -70,14 +75,22 @@ export default function App() {
       .select('*')
       .order('sort_order', { ascending: true });
 
-    if (error) console.error('Error fetching:', error);
+    if (error) console.error('Error fetching patterns:', error);
     else setPatterns(data || []);
     setDataLoading(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { text_value: textValue, image_url: imageUrl, folder_path: folderPath, sort_order: sortOrder };
+    
+    // category_id ကိုပါ ထည့်ပို့ပေးပါမည်
+    const payload = { 
+      category_id: categoryId, 
+      text_value: textValue, 
+      image_url: imageUrl, 
+      folder_path: folderPath, 
+      sort_order: sortOrder 
+    };
 
     if (editingId) {
       const { error } = await supabase.from('patterns').update(payload).eq('id', editingId);
@@ -101,6 +114,7 @@ export default function App() {
 
   const handleEdit = (pattern: any) => {
     setEditingId(pattern.id);
+    setCategoryId(pattern.category_id || ''); // Edit လုပ်ရင် category ပြန်ရွေးပေးရန်
     setTextValue(pattern.text_value || '');
     setImageUrl(pattern.image_url || '');
     setFolderPath(pattern.folder_path || '');
@@ -109,10 +123,14 @@ export default function App() {
   };
 
   const resetForm = () => {
-    setTextValue(''); setImageUrl(''); setFolderPath(''); setSortOrder(0); setEditingId(null);
+    setCategoryId(''); 
+    setTextValue(''); 
+    setImageUrl(''); 
+    setFolderPath(''); 
+    setSortOrder(0); 
+    setEditingId(null);
   };
 
-  // === Login Page UI ===
   if (!session) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 text-black font-sans">
@@ -134,11 +152,9 @@ export default function App() {
     );
   }
 
-  // === Dashboard UI ===
   return (
     <div className="min-h-screen bg-gray-50 p-8 font-sans text-black">
       <div className="max-w-6xl mx-auto">
-        {/* Header with Logout */}
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-800">Chart Patterns Admin</h1>
           <button onClick={handleLogout} className="bg-red-50 hover:bg-red-100 text-red-600 font-medium px-4 py-2 rounded border border-red-200 transition">
@@ -146,15 +162,31 @@ export default function App() {
           </button>
         </div>
 
-        {/* Form Section */}
         <form onSubmit={handleSubmit} className="mb-10 p-6 bg-white border border-gray-200 rounded-lg shadow-sm">
           <h2 className="text-xl font-semibold mb-4 text-gray-700">{editingId ? 'Edit Pattern' : 'Add New Pattern'}</h2>
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <input type="text" placeholder="Text Value" value={textValue} onChange={(e) => setTextValue(e.target.value)} required className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
-            <input type="text" placeholder="Image URL" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
-            <input type="text" placeholder="Folder Path" value={folderPath} onChange={(e) => setFolderPath(e.target.value)} className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
-            <input type="number" placeholder="Sort Order" value={sortOrder} onChange={(e) => setSortOrder(Number(e.target.value))} className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+            {/* Category Dropdown အသစ် */}
+            <select 
+              value={categoryId} 
+              onChange={(e) => setCategoryId(e.target.value)} 
+              required 
+              className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white text-black"
+            >
+              <option value="" disabled>Select Category</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name || c.category_name || c.title || c.id} {/* Category နာမည်ကို ပြပေးရန် */}
+                </option>
+              ))}
+            </select>
+
+            <input type="text" placeholder="Text Value" value={textValue} onChange={(e) => setTextValue(e.target.value)} required className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none text-black" />
+            <input type="text" placeholder="Image URL" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none text-black" />
+            <input type="text" placeholder="Folder Path" value={folderPath} onChange={(e) => setFolderPath(e.target.value)} className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none text-black" />
+            <input type="number" placeholder="Sort Order" value={sortOrder} onChange={(e) => setSortOrder(Number(e.target.value))} className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none text-black" />
           </div>
+          
           <div className="flex gap-3">
             <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded transition">
               {editingId ? 'Update Record' : 'Save Record'}
@@ -165,7 +197,6 @@ export default function App() {
           </div>
         </form>
 
-        {/* Table Section */}
         {dataLoading ? (
           <div className="text-center py-10 text-gray-500">Loading data...</div>
         ) : (
