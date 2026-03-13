@@ -8,6 +8,8 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+type SortField = 'sort_order' | 'text_value' | 'folder_path';
+
 export default function App() {
   const [session, setSession] = useState<any>(null);
   
@@ -20,6 +22,10 @@ export default function App() {
   const [patterns, setPatterns] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  
+  // Sorting States (အသစ်ထည့်ထားသော State များ)
+  const [sortBy, setSortBy] = useState<SortField>('sort_order');
+  const [sortAsc, setSortAsc] = useState(true);
   
   // Form States
   const [categoryId, setCategoryId] = useState('');
@@ -71,7 +77,7 @@ export default function App() {
     const { data, error } = await supabase
       .from('patterns')
       .select('*')
-      .order('sort_order', { ascending: true });
+      .order('sort_order', { ascending: true }); // Database ကနေ Default အနေနဲ့ Sort Order အတိုင်းခေါ်ပါမယ်
 
     if (error) console.error('Error fetching patterns:', error);
     else setPatterns(data || []);
@@ -99,8 +105,8 @@ export default function App() {
       else alert('Added successfully!');
     }
     
-    // Error မတက်မှသာ Form ကို Reset ချပါမယ်
     fetchPatterns();
+    resetForm();
   };
 
   const handleDelete = async (id: string) => {
@@ -129,7 +135,34 @@ export default function App() {
     setEditingId(null);
   };
 
-  // ရှိပြီးသား Folder Path များကို သီးသန့်ထုတ်ယူခြင်း (Duplicate များကို ဖယ်ရှားရန် Set ကိုသုံးထားပါသည်)
+  // Header နှိပ်တဲ့အခါ အလုပ်လုပ်မယ့် Function (အသစ်)
+  const handleSort = (field: SortField) => {
+    if (sortBy === field) {
+      setSortAsc(!sortAsc); // တူညီတဲ့ ခေါင်းစဉ်ကို ထပ်နှိပ်ရင် အတက်/အဆင်း ပြောင်းမယ်
+    } else {
+      setSortBy(field);
+      setSortAsc(true); // ခေါင်းစဉ်အသစ်ဆိုရင် A-Z (Ascending) ကစမယ်
+    }
+  };
+
+  // ဇယားထဲပြမယ့် Data များကို အစဉ်လိုက်စီခြင်း (အသစ်)
+  const sortedPatterns = [...patterns].sort((a, b) => {
+    let valA = a[sortBy];
+    let valB = b[sortBy];
+
+    // စာသားဆိုရင် အကြီးအသေး မရွေးဘဲ စီနိုင်ရန်
+    if (typeof valA === 'string') valA = valA.toLowerCase();
+    if (typeof valB === 'string') valB = valB.toLowerCase();
+
+    // အလွတ်ဖြစ်နေရင် နောက်ဆုံးပို့ရန်
+    if (!valA && valB) return sortAsc ? 1 : -1;
+    if (valA && !valB) return sortAsc ? -1 : 1;
+
+    if (valA < valB) return sortAsc ? -1 : 1;
+    if (valA > valB) return sortAsc ? 1 : -1;
+    return 0;
+  });
+
   const existingFolderPaths = Array.from(new Set(patterns.map(p => p.folder_path).filter(Boolean)));
 
   if (!session) {
@@ -184,7 +217,6 @@ export default function App() {
             <input type="text" placeholder="Text Value" value={textValue} onChange={(e) => setTextValue(e.target.value)} required className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none text-black" />
             <input type="text" placeholder="Image URL" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none text-black" />
             
-            {/* Folder Path အတွက် Autocomplete Input */}
             <input 
               type="text" 
               placeholder="Folder Path (e.g. sl_2)" 
@@ -193,7 +225,6 @@ export default function App() {
               list="existing-folders" 
               className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none text-black" 
             />
-            {/* Datalist က ရှိပြီးသား Data တွေကို ပြပေးပါမယ် */}
             <datalist id="existing-folders">
               {existingFolderPaths.map((path, idx) => (
                 <option key={idx} value={path as string} />
@@ -219,16 +250,24 @@ export default function App() {
           <div className="overflow-x-auto bg-white border border-gray-200 rounded-lg shadow-sm">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-gray-50 text-gray-600 text-sm uppercase tracking-wider">
-                  <th className="p-4 border-b">Sort</th>
-                  <th className="p-4 border-b">Text Value</th>
-                  <th className="p-4 border-b">Folder Path</th>
+                <tr className="bg-gray-50 text-gray-600 text-sm uppercase tracking-wider select-none">
+                  {/* ခေါင်းစဉ်များကို Click နှိပ်လို့ရအောင် ပြင်ထားပါသည် */}
+                  <th className="p-4 border-b cursor-pointer hover:bg-gray-200 transition" onClick={() => handleSort('sort_order')}>
+                    Sort {sortBy === 'sort_order' && (sortAsc ? '▲' : '▼')}
+                  </th>
+                  <th className="p-4 border-b cursor-pointer hover:bg-gray-200 transition" onClick={() => handleSort('text_value')}>
+                    Text Value {sortBy === 'text_value' && (sortAsc ? '▲' : '▼')}
+                  </th>
+                  <th className="p-4 border-b cursor-pointer hover:bg-gray-200 transition" onClick={() => handleSort('folder_path')}>
+                    Folder Path {sortBy === 'folder_path' && (sortAsc ? '▲' : '▼')}
+                  </th>
                   <th className="p-4 border-b">Image URL</th>
                   <th className="p-4 border-b text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="text-gray-800 text-sm">
-                {patterns.map((pattern) => (
+                {/* ပြင်ထားတဲ့ sortedPatterns ကို အသုံးပြုပါမည် */}
+                {sortedPatterns.map((pattern) => (
                   <tr key={pattern.id} className="border-b hover:bg-gray-50 transition">
                     <td className="p-4">{pattern.sort_order}</td>
                     <td className="p-4 font-medium">{pattern.text_value}</td>
